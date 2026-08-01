@@ -40,7 +40,7 @@ services:
     # a container restart or being copied to the host.  MFA is therefore
     # intentionally required after a restart.
     tmpfs:
-      - /home/ibgateway/tws_settings:rw,mode=0700,size=64m
+      - /home/ibgateway/tws_settings:rw,uid=1000,gid=1000,mode=0700,size=64m
     volumes:
       - ./scripts/ib-gateway-run.sh:/home/ibgateway/scripts/run.sh:ro
     ports:
