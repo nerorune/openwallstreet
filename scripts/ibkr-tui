@@ -11,10 +11,10 @@ case "${1:-}" in
     ;;
   login)
     vnc_password="$(openssl rand -base64 24 | tr -d '=+/\n' | cut -c1-20)"
-    export TRADING_MODE=paper TWS_USERID='' TWS_PASSWORD='' VNC_SERVER_PASSWORD="$vnc_password"
+    export TRADING_MODE=paper VNC_SERVER_PASSWORD="$vnc_password"
     docker compose up -d ib-gateway
     cat <<EOF
-IB Gateway is starting in PAPER mode with an empty login form.
+IB Gateway is starting in PAPER mode using the operator-authorized .env login.
 
 Create a tunnel from your workstation:
   ssh -L 5901:127.0.0.1:5901 john@187.124.115.209
@@ -22,9 +22,9 @@ Create a tunnel from your workstation:
 Then connect a VNC viewer to 127.0.0.1:5901 using this temporary VNC password:
   $vnc_password
 
-Type IBKR credentials directly in Gateway and complete MFA there. The password
-above is only in this container's transient runtime environment; no IBKR
-credentials are written to disk. After Gateway reports logged in, return here.
+Approve the IBKR MFA request. The VNC password above is only in this
+container's transient runtime environment. After Gateway reports logged in,
+return here.
 EOF
     ;;
   start)

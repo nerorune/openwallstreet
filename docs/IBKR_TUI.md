@@ -45,9 +45,11 @@ For this headless host, the intended deployment is Docker IB Gateway plus host
 MMR services. Use only the paper API port selected during setup (normally the
 project's localhost `7497` mapping); do not enable `--live`. Before any
 credential is supplied, obtain explicit operator consent identifying whether it
-will be typed into the IB Gateway VNC UI or placed in a protected secret. This
-deployment opens a blank Gateway form and mounts its settings as a tmpfs, so
-neither credentials nor session state persist. MFA cannot be bypassed. On
+will be typed into the IB Gateway VNC UI or placed in a protected secret. When
+the operator explicitly authorizes a local `.env`, it must be mode `0600`,
+gitignored, and contain only `TWS_USERID` and `TWS_PASSWORD`; Docker Compose
+passes it only to the local Gateway container. This deployment mounts Gateway
+settings as a tmpfs, so session state does not persist. MFA cannot be bypassed. On
 successful login, verify `mmr status --json`, retrieve
 account/positions/orders, and use `mmr snapshot QQQ` / `mmr listen QQQ` to
 confirm real ticks or an explicitly delayed state.
