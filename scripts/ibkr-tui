@@ -10,11 +10,17 @@ case "${1:-}" in
     exec ./start_mmr.sh --setup
     ;;
   login)
+    mode="${2:---paper}"
+    case "$mode" in
+      --paper) trading_mode="paper"; read_only="no" ;;
+      --live) trading_mode="live"; read_only="yes" ;;
+      *) echo "usage: $0 login [--paper|--live]" >&2; exit 2 ;;
+    esac
     vnc_password="$(openssl rand -base64 24 | tr -d '=+/\n' | cut -c1-20)"
-    export TRADING_MODE=paper VNC_SERVER_PASSWORD="$vnc_password"
+    export TRADING_MODE="$trading_mode" READ_ONLY_API="$read_only" VNC_SERVER_PASSWORD="$vnc_password"
     docker compose up -d ib-gateway
     cat <<EOF
-IB Gateway is starting in PAPER mode using the operator-authorized .env login.
+IB Gateway is starting in ${trading_mode} mode using the operator-authorized .env login.
 
 Create a tunnel from your workstation:
   ssh -L 5901:127.0.0.1:5901 john@187.124.115.209
@@ -22,7 +28,7 @@ Create a tunnel from your workstation:
 Then connect a VNC viewer to 127.0.0.1:5901 using this temporary VNC password:
   $vnc_password
 
-Approve the IBKR MFA request. The VNC password above is only in this
+For live mode, the Gateway API is read-only. Approve the IBKR MFA request. The VNC password above is only in this
 container's transient runtime environment. After Gateway reports logged in,
 return here.
 EOF

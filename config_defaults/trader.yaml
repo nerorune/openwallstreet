@@ -26,6 +26,16 @@ trading_mode: paper
 # the loop. Off by default so paper / manual workflows aren't disturbed.
 require_proposal_approval: true
 
+# Absolute execution kill switch. Keep false for paper setup and all live-data
+# sessions. The final MMR execution boundary refuses every placement when this
+# is false, independently of the IB Gateway read-only API setting.
+execution_enabled: false
+
+# Ask ib_async/IBKR for a read-only client connection. Use true for any live
+# data session; an operator must deliberately set this false *and* enable the
+# execution switch before an order can be sent.
+ib_read_only: true
+
 # Server-side notional tier (Phase 2 proposer/approver split).
 # When approver_required_above_usd > 0, an exposure-INCREASING order whose
 # SERVER-RECOMPUTED notional exceeds this threshold requires a matching

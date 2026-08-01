@@ -93,6 +93,8 @@ class Trader():
                  zmq_messagebus_server_port: int,
                  history_duckdb_path: str = '',
                  paper_trading: bool = False,
+                 ib_read_only: bool = False,
+                 execution_enabled: bool = False,
                  simulation: bool = False,
                  require_proposal_approval: bool = False,
                  approver_required_above_usd: float = 0.0,
@@ -106,6 +108,11 @@ class Trader():
         self.universe_library = universe_library
         self.simulation: bool = simulation
         self.paper_trading = paper_trading
+        # Two independent live-data safety controls. ``ib_read_only`` asks
+        # IBKR to reject mutations at the API layer; ``execution_enabled`` is
+        # MMR's own default-deny kill switch at the final placement boundary.
+        self.ib_read_only: bool = ib_read_only
+        self.execution_enabled: bool = execution_enabled
         # When True, `place_order_simple` (the direct buy/sell RPC path) is
         # rejected unless the order is exit-class (it reduces the live broker
         # position — see order_reduces_exposure). All actionable new trades
@@ -264,6 +271,7 @@ class Trader():
                 ib_server_port=self.ib_server_port,
                 ib_client_id=self.trading_runtime_ib_client_id,
                 ib_account=self.ib_account,
+                read_only=self.ib_read_only,
             )
             self.data = TickStorage(self.history_duckdb_path)
             self.universe_accessor = UniverseAccessor(self.duckdb_path, self.universe_library)

@@ -75,6 +75,11 @@ class TraderServiceApi(RPCHandler):
         skip_risk_gate: bool = False,
         approver_key: str = '',
     ) -> SuccessFail[Trade]:
+        # Refuse at the public RPC boundary as well as at Executioner's final
+        # chokepoint. This avoids doing previews/what-if work for a request
+        # that a read-only live-data session has explicitly locked.
+        if not getattr(self.trader, 'execution_enabled', True):
+            return SuccessFail.fail(error='MMR execution is locked; no order was sent to IBKR')
         # todo: we'll have to make the cli async so we can subscribe to the trade
         # changes as orders get hit etc
         logging.warn('place_order_simple() is not complete, your mileage may vary')
@@ -346,6 +351,8 @@ class TraderServiceApi(RPCHandler):
         approver_key: str = '',
     ) -> SuccessFail[list[Trade]]:
         """Place an order with full execution specification (brackets, trailing stops, etc.)."""
+        if not getattr(self.trader, 'execution_enabled', True):
+            return SuccessFail.fail(error='MMR execution is locked; no order was sent to IBKR')
         result = await self.trader.place_expressive_order(
             contract=contract,
             action=action,

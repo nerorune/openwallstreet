@@ -67,6 +67,8 @@ def _data_state(tick: dict[str, Any], now: datetime | None = None) -> str:
 @dataclass
 class TerminalState:
     connected: bool = False
+    trading_mode: str = "PAPER"
+    execution_enabled: bool = False
     account: str = ""
     account_values: dict[str, Any] = field(default_factory=dict)
     positions: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -93,7 +95,8 @@ class DemoBackend:
 
     def refresh(self, symbols: list[str]) -> TerminalState:
         self.tick += 1
-        state = TerminalState(connected=True, account="DU1234567")
+        state = TerminalState(connected=True, trading_mode="PAPER", execution_enabled=False,
+                              account="DU1234567")
         state.account_values = {
             "NetLiquidation": {"value": 100_000.0, "currency": "USD"},
             "TotalCashValue": {"value": 74_250.0, "currency": "USD"},
@@ -139,14 +142,19 @@ class MMRBackend:
 
     def __init__(self) -> None:
         from trader.sdk import MMR
+        from trader.container import Container
         self.mmr = MMR()
         self._connected = False
+        config = Container.instance().config()
+        self.trading_mode = str(config.get("trading_mode", "paper")).upper()
+        self.execution_enabled = bool(config.get("execution_enabled", False))
 
     def refresh(self, symbols: list[str]) -> TerminalState:
         if not self._connected:
             self.mmr.connect()
             self._connected = True
-        state = TerminalState()
+        state = TerminalState(trading_mode=self.trading_mode,
+                              execution_enabled=self.execution_enabled)
         status = self.mmr.status()
         state.connected = bool(status.get("connected") and status.get("ib_upstream_connected", True))
         state.service_error = str(status.get("ib_upstream_error", ""))
@@ -325,7 +333,9 @@ class MMRTerminal(App):
         self.state = state
         self._busy = False
         self.query_one("#topline", Static).update(
-            f"MMR IBKR TUI  |  PAPER ONLY  |  {'CONNECTED' if state.connected else 'DISCONNECTED'}"
+            f"MMR IBKR TUI  |  {state.trading_mode} DATA  |  EXECUTION "
+            f"{'ENABLED' if state.execution_enabled else 'LOCKED'}  |  "
+            f"{'CONNECTED' if state.connected else 'DISCONNECTED'}"
             f"  |  Account {_masked_account(state.account)}"
         )
         values = state.account_values
@@ -410,6 +420,10 @@ class MMRTerminal(App):
         self.push_screen(OrderPreviewScreen(self))
 
     def action_approve_selected(self) -> None:
+        if not self.state.execution_enabled:
+            self.state.note("Execution is locked in MMR; approval cannot send an IBKR order.")
+            self._apply_state(self.state)
+            return
         proposal_id = self._selected_proposal_id()
         if proposal_id is None:
             self.state.note("Select a proposal row first."); self._apply_state(self.state); return

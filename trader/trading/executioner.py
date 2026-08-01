@@ -157,6 +157,16 @@ class TradeExecutioner():
         self,
         approved: ApprovedOrder,
     ) -> Observable[Trade]:
+        # Absolute, default-deny execution kill switch. This is deliberately
+        # the first statement at the one IB placement chokepoint, so every
+        # path (manual RPC, proposal approval, strategy, bracket/protective
+        # legs, retries) is blocked before any broker submission. It is
+        # independent of the Gateway's read-only API setting: a deployment
+        # needs both a local policy boundary and IBKR's own rejection.
+        if not getattr(self.trader, 'execution_enabled', True):
+            return rx.throw(PermissionError(
+                'MMR execution is locked (execution_enabled=false); no order was sent to IBKR'))
+
         # The single IB placement chokepoint. It accepts ONLY an ApprovedOrder
         # capability token — a code path that never reached the gate cannot
         # construct this argument (the token is mint-only; see approved_order).
