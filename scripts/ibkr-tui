@@ -34,10 +34,18 @@ return here.
 EOF
     ;;
   start)
-    exec ./start_mmr.sh --paper
+    mode="${2:---paper}"
+    case "$mode" in
+      --paper|--live) exec ./start_mmr.sh "$mode" ;;
+      *) echo "usage: $0 start [--paper|--live]" >&2; exit 2 ;;
+    esac
     ;;
   reconnect)
-    exec ./start_mmr.sh --paper --restart-all
+    mode="${2:---paper}"
+    case "$mode" in
+      --paper|--live) exec ./start_mmr.sh "$mode" --restart-all ;;
+      *) echo "usage: $0 reconnect [--paper|--live]" >&2; exit 2 ;;
+    esac
     ;;
   tui)
     exec uv run mmr tui
@@ -46,10 +54,10 @@ EOF
     exec uv run mmr tui --demo
     ;;
   status)
-    exec uv run mmr status --json
+    exec uv run mmr --json status
     ;;
   doctor)
-    exec uv run mmr verify --json
+    exec uv run mmr --json verify
     ;;
   logs)
     exec uv run mmr logs

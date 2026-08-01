@@ -60,7 +60,7 @@ the operator explicitly authorizes a local `.env`, it must be mode `0600`,
 gitignored, and contain only `TWS_USERID` and `TWS_PASSWORD`; Docker Compose
 passes it only to the local Gateway container. This deployment mounts Gateway
 settings as a tmpfs, so session state does not persist. MFA cannot be bypassed. On
-successful login, verify `mmr status --json`, retrieve
+successful login, verify `mmr --json status`, retrieve
 account/positions/orders, and use `mmr snapshot QQQ` / `mmr listen QQQ` to
 confirm real ticks or an explicitly delayed state.
 
