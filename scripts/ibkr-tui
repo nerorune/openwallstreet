@@ -63,6 +63,12 @@ EOF
     exec uv run mmr logs
     ;;
   stop)
+    # Stop the named, managed host session when present.  Do not broadly kill
+    # Python/Java processes: they may belong to another application.
+    if tmux has-session -t mmr-live-readonly 2>/dev/null; then
+      tmux send-keys -t mmr-live-readonly C-c
+      sleep 2
+    fi
     # Stops only this project's compose services; no volumes or user data are removed.
     exec docker compose stop
     ;;

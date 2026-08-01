@@ -22,8 +22,10 @@ local messaging when compatible with the desired data stream.
 cd ~/ibkr-tui
 ./scripts/ibkr-tui setup       # configure paper API host/port/account; no password needed
 ./scripts/ibkr-tui login       # credential-consent guard; MFA remains interactive
-./scripts/ibkr-tui start       # host services + Docker IB Gateway hybrid mode
+./scripts/ibkr-tui start       # paper host services + Docker IB Gateway hybrid mode
+./scripts/ibkr-tui start --live # live data only; honors the execution lock
 ./scripts/ibkr-tui reconnect   # controlled paper stack restart
+./scripts/ibkr-tui reconnect --live # controlled live-data stack restart
 ./scripts/ibkr-tui tui         # live MMR-backed terminal
 ./scripts/ibkr-tui demo        # deterministic, no-IBKR terminal
 ./scripts/ibkr-tui doctor      # MMR verification
@@ -32,9 +34,10 @@ cd ~/ibkr-tui
 ```
 
 `mmr tui` refreshes account, positions, orders, proposals, and the watchlist
-through MMR. `P` opens a limit-order preview, `A` approves the selected
-proposal only after a Y confirmation, `X` rejects it, `R` refreshes and `D`
-shows diagnostics. A preview cannot transmit. Approval calls MMR, whose
+through MMR. In paper execution mode, `P` opens a limit-order preview and `A`
+approves the selected proposal only after a Y confirmation. With execution
+locked, both entry points are blocked in the TUI. `X` rejects a proposal, `R`
+refreshes and `D` shows diagnostics. A preview cannot transmit. Approval calls MMR, whose
 proposal transition, risk checks, account pinning and duplicate/retry controls
 remain authoritative. The compact layout activates below 80 columns for SSH,
 tmux, and mobile terminals.
