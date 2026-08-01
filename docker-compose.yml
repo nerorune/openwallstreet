@@ -13,14 +13,16 @@ services:
     # letting it run away and starve the rest of the VM.
     mem_limit: 2g
     memswap_limit: 2g
-    env_file: .env
     environment:
-      TWS_USERID: ${TWS_USERID}
-      TWS_PASSWORD: ${TWS_PASSWORD}
+      # Credentials are intentionally not read from .env.  Empty values open
+      # the Gateway UI for an operator to type them interactively; no IBKR
+      # password is written to the host filesystem or project configuration.
+      TWS_USERID: ${TWS_USERID:-}
+      TWS_PASSWORD: ${TWS_PASSWORD:-}
       TRADING_MODE: ${TRADING_MODE:-paper}
       TWS_ACCEPT_INCOMING: ${TWS_ACCEPT_INCOMING:-accept}
       READ_ONLY_API: ${READ_ONLY_API:-no}
-      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-trader}
+      VNC_SERVER_PASSWORD: ${VNC_SERVER_PASSWORD:-}
       TWOFA_TIMEOUT_ACTION: ${TWOFA_TIMEOUT_ACTION:-restart}
       RELOGIN_AFTER_TWOFA_TIMEOUT: ${RELOGIN_AFTER_TWOFA_TIMEOUT:-yes}
       EXISTING_SESSION_DETECTED_ACTION: ${EXISTING_SESSION_DETECTED_ACTION:-primary}
@@ -34,10 +36,13 @@ services:
       TWS_SETTINGS_PATH: /home/ibgateway/tws_settings
       # Override default 1024x768 — patched run.sh reads XVFB_SCREEN env var
       XVFB_SCREEN: ${XVFB_SCREEN:-1920x1080x24}
+    # A tmpfs prevents Gateway session/authentication artefacts from surviving
+    # a container restart or being copied to the host.  MFA is therefore
+    # intentionally required after a restart.
+    tmpfs:
+      - /home/ibgateway/tws_settings:rw,mode=0700,size=64m
     volumes:
       - ./scripts/ib-gateway-run.sh:/home/ibgateway/scripts/run.sh:ro
-      # Persist TWS runtime settings (auto-restart state, login sessions) across restarts
-      - ${HOME}/.local/share/mmr/tws_settings:/home/ibgateway/tws_settings
     ports:
       # IB Gateway API ports mapped to standard TWS ports (live: 7496, paper: 7497)
       - "127.0.0.1:7496:4003"

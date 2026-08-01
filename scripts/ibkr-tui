@@ -10,11 +10,21 @@ case "${1:-}" in
     exec ./start_mmr.sh --setup
     ;;
   login)
-    cat <<'EOF'
-IBKR credential consent is required before this command can use a username or
-password. No credentials are stored by ibkr-tui. Set up a paper account/API
-port with `./scripts/ibkr-tui setup`, then request a credential-use session
-from the operator. MFA must be completed in IB Gateway's VNC window.
+    vnc_password="$(openssl rand -base64 24 | tr -d '=+/\n' | cut -c1-20)"
+    export TRADING_MODE=paper TWS_USERID='' TWS_PASSWORD='' VNC_SERVER_PASSWORD="$vnc_password"
+    docker compose up -d ib-gateway
+    cat <<EOF
+IB Gateway is starting in PAPER mode with an empty login form.
+
+Create a tunnel from your workstation:
+  ssh -L 5901:127.0.0.1:5901 john@187.124.115.209
+
+Then connect a VNC viewer to 127.0.0.1:5901 using this temporary VNC password:
+  $vnc_password
+
+Type IBKR credentials directly in Gateway and complete MFA there. The password
+above is only in this container's transient runtime environment; no IBKR
+credentials are written to disk. After Gateway reports logged in, return here.
 EOF
     ;;
   start)
