@@ -48,6 +48,21 @@ class TestRetryDecision:
 
 
 class TestHandlerMarksTheLoss:
+    def test_10167_allows_delayed_ticks_to_arrive(self):
+        """10167 is IB's delayed-data notice, not a failed subscription."""
+        rx = _rx()
+        errors = []
+        rx.error_subject.subscribe(errors.append)
+        asyncio.new_event_loop().run_until_complete(
+            rx._IBAIORx__handle_error(
+                1,
+                10167,
+                'Requested market data is not subscribed. Displaying delayed market data.',
+                Contract(),
+            )
+        )
+        assert errors == []
+
     def test_10197_sets_the_loss_timestamp(self):
         rx = _rx()
         assert rx._md_lost_at is None

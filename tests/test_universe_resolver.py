@@ -5,7 +5,10 @@ when a universe was given and skipped sec_type entirely.
 """
 import types
 
+import pytest
+
 from trader.data.universe import UniverseAccessor
+from trader.trading.trading_runtime import Trader
 
 
 def _accessor_with_cached_asx_stk():
@@ -48,3 +51,21 @@ def test_invalidate_clears_cache():
     acc, u, sd = _accessor_with_cached_asx_stk()
     acc.invalidate_resolver_cache()
     assert acc._resolver_cache == {}
+
+
+@pytest.mark.asyncio
+async def test_trader_forwards_requested_security_type_to_local_resolver():
+    """A cached QQQ option must never satisfy a stock quote request."""
+    trader = Trader.__new__(Trader)
+    captured = {}
+
+    class Accessor:
+        def resolve_symbol(self, **kwargs):
+            captured.update(kwargs)
+            return ["stock-definition"]
+
+    trader.universe_accessor = Accessor()
+    result = await trader.resolve_symbol("QQQ", sec_type="STK")
+
+    assert result == ["stock-definition"]
+    assert captured["sec_type"] == "STK"

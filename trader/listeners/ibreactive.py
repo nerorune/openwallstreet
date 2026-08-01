@@ -320,6 +320,19 @@ class IBAIORx():
         if errorCode in (2104, 2106, 2107, 2158):
             return
 
+        if errorCode == 10167:
+            # IB emits this informational warning immediately before it
+            # delivers delayed ticks when the account lacks a live
+            # entitlement.  Treating it as a terminal subscription error
+            # races the delayed ticks and makes an otherwise usable delayed
+            # feed appear unavailable to callers.
+            logging.info(
+                'ibrx delayed market data enabled: reqId: %s contract: %s',
+                reqId,
+                contract,
+            )
+            return
+
         if errorCode == 10197:
             # Competing live session took the market-data entitlement. Mark the
             # loss and make sure the recovery loop is running; it re-requests
@@ -577,9 +590,10 @@ class IBAIORx():
             asend_result=False
         )
 
-        if delayed:
-            self.ib.reqMarketDataType(1)
-            logging.debug('reqMarketDataType(1)')
+        # Keep data type 3 active until a later non-delayed request explicitly
+        # selects type 1. Resetting it immediately races IB's asynchronous
+        # reqMktData dispatch: a delayed request becomes live before its first
+        # tick and is rejected with 10089 despite delayed data being available.
 
         def filter_reqid(error: IBAIORxError):
             return error.reqId == reqId
@@ -620,9 +634,8 @@ class IBAIORx():
             asend_result=False
         )
 
-        if delayed:
-            self.ib.reqMarketDataType(1)
-            logging.debug('reqMarketDataType(1)')
+        # See subscribe_contract_direct: do not reset type 3 synchronously or
+        # IB can evaluate this request as live and reject it with error 10089.
 
         def filter_contract(ticker):
             return self._filter_contract(contract, ticker)
@@ -1198,6 +1211,12 @@ class IBAIORx():
                     'symbol': contract.symbol, 'conId': contract.conId,
                     'exchange': contract.primaryExchange or contract.exchange,
                     'currency': contract.currency,
+                    'time': ticker.time,
+                    # The request mode is explicit, whereas a Ticker does
+                    # not reliably retain an IB market-data-type field after
+                    # RPC serialization.  Expose it so clients never label
+                    # delayed quotes as live merely because they have a last.
+                    'data_type': 'DELAYED' if delayed else 'LIVE',
                     'bid': ticker.bid, 'ask': ticker.ask, 'last': ticker.last,
                     'open': ticker.open, 'high': ticker.high, 'low': ticker.low,
                     'close': ticker.close, 'volume': ticker.volume,

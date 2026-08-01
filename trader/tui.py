@@ -177,7 +177,7 @@ class MMRBackend:
     def approve(self, proposal_id: int) -> str:
         result = self.mmr.approve(proposal_id)
         if result.is_success():
-            return f"Proposal #{proposal_id} approved; MMR submitted the paper order."
+            return f"Proposal #{proposal_id} approved; MMR accepted the request."
         return f"MMR refused proposal #{proposal_id}: {result.error or 'unknown error'}"
 
     def close(self) -> None:
@@ -279,7 +279,7 @@ class MMRTerminal(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        yield Static("MMR IBKR TUI  |  PAPER ONLY  |  Connecting…", id="topline")
+        yield Static("MMR IBKR TUI  |  Connecting…  |  EXECUTION LOCKED", id="topline")
         with Grid(id="main"):
             with Vertical():
                 yield DataTable(id="watchlist")
@@ -343,7 +343,8 @@ class MMRTerminal(App):
             value = values.get(name, {})
             return value.get("value") if isinstance(value, dict) else value
         self.query_one("#account", Static).update(
-            "Account  |  PAPER\n"
+            f"Account  |  {state.trading_mode} DATA  |  EXECUTION "
+            f"{'ENABLED' if state.execution_enabled else 'LOCKED'}\n"
             f"Net Liq {_money(account_value('NetLiquidation'))}  Cash {_money(account_value('TotalCashValue'))}\n"
             f"Available {_money(account_value('AvailableFunds'))}  Buying Power {_money(account_value('BuyingPower'))}\n"
             f"Service: {'OK' if not state.service_error else state.service_error}"
@@ -417,6 +418,10 @@ class MMRTerminal(App):
             return None
 
     def action_order_preview(self) -> None:
+        if not self.backend.is_demo and not self.state.execution_enabled:
+            self.state.note("Order preview is disabled: execution is locked in MMR.")
+            self._apply_state(self.state)
+            return
         self.push_screen(OrderPreviewScreen(self))
 
     def action_approve_selected(self) -> None:
@@ -450,7 +455,10 @@ class MMRTerminal(App):
 
     def action_doctor(self) -> None:
         mode = "demo (no broker)" if self.backend.is_demo else "MMR SDK → localhost RPC"
-        self.state.note(f"Doctor: {mode}; PAPER branding active; no direct IBKR API path in TUI.")
+        self.state.note(
+            f"Doctor: {mode}; {self.state.trading_mode} data; execution "
+            f"{'enabled' if self.state.execution_enabled else 'locked'}; no direct IBKR API path in TUI."
+        )
         self._apply_state(self.state)
 
     def on_unmount(self) -> None:

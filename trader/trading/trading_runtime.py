@@ -839,6 +839,7 @@ class Trader():
                 symbol=symbol,
                 exchange=exchange,
                 universe=universe,
+                sec_type=sec_type,
                 first_only=first_only
             )
 
