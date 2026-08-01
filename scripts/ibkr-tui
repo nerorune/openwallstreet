@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Local lifecycle wrapper.  Never reads, writes, or prints IBKR credentials.
+set -euo pipefail
+
+root_dir="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$root_dir"
+
+case "${1:-}" in
+  setup)
+    exec ./start_mmr.sh --setup
+    ;;
+  login)
+    cat <<'EOF'
+IBKR credential consent is required before this command can use a username or
+password. No credentials are stored by ibkr-tui. Set up a paper account/API
+port with `./scripts/ibkr-tui setup`, then request a credential-use session
+from the operator. MFA must be completed in IB Gateway's VNC window.
+EOF
+    ;;
+  start)
+    exec ./start_mmr.sh --paper
+    ;;
+  reconnect)
+    exec ./start_mmr.sh --paper --restart-all
+    ;;
+  tui)
+    exec uv run mmr tui
+    ;;
+  demo)
+    exec uv run mmr tui --demo
+    ;;
+  status)
+    exec uv run mmr status --json
+    ;;
+  doctor)
+    exec uv run mmr verify --json
+    ;;
+  logs)
+    exec uv run mmr logs
+    ;;
+  stop)
+    # Stops only this project's compose services; no volumes or user data are removed.
+    exec docker compose stop
+    ;;
+  *)
+    echo "usage: $0 {setup|login|start|reconnect|tui|demo|status|doctor|logs|stop}" >&2
+    exit 2
+    ;;
+esac

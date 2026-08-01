@@ -393,6 +393,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help='Show debug/info log output')
     sub = parser.add_subparsers(dest='command')
 
+    tui_p = sub.add_parser('tui', help='Open the MMR Textual paper-trading terminal')
+    tui_p.add_argument('--demo', action='store_true',
+                       help='Run deterministic local demo data; never contacts IBKR')
+    tui_p.add_argument('--watchlist', default='',
+                       help='Comma-separated symbols (default: built-in paper watchlist)')
+
     # portfolio
     portfolio_p = sub.add_parser('portfolio', aliases=['p'], help='Portfolio with P&L',
                    epilog='Examples:\n'
@@ -1970,6 +1976,14 @@ def dispatch(mmr: MMR, args: argparse.Namespace) -> bool:
 
     if cmd in ('help', 'h', '?') or cmd is None:
         build_parser().print_help()
+        return True
+
+    if cmd == 'tui':
+        # Import only when requested: this keeps ordinary machine-readable CLI
+        # calls free of Textual terminal setup.
+        from trader.tui import run_tui
+        symbols = [s.strip().upper() for s in args.watchlist.split(',') if s.strip()]
+        run_tui(demo=args.demo, watchlist=symbols or None)
         return True
 
     # MMR_ROLE capability gate (defense-in-depth). This single insertion covers
@@ -12590,7 +12604,7 @@ def repl(mmr: MMR):
 # Entry point
 # ------------------------------------------------------------------
 
-_LOCAL_ONLY_COMMANDS = {'backtest', 'bt', 'data', 'propose', 'proposals', 'reject', 'market-hours', 'mh', 'session', 'group'}
+_LOCAL_ONLY_COMMANDS = {'backtest', 'bt', 'data', 'propose', 'proposals', 'reject', 'market-hours', 'mh', 'session', 'group', 'tui'}
 _LOCAL_ONLY_STRAT_ACTIONS = {'create', 'deploy', 'undeploy', 'signals', 'backtest', 'pnl'}
 
 

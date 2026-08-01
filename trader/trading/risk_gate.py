@@ -26,6 +26,12 @@ class RiskLimits:
     max_signals_per_hour: int = 20
     max_leverage: float = 1.0        # 1.0 = cash only, 2.0 = 2x margin allowed
     min_margin_cushion: float = 0.10  # minimum Cushion (excess liq / net liq)
+    # Absolute paper-order limits.  Zero disables a limit for installations
+    # retaining the historical MMR behaviour; the supplied ibkr-tui config
+    # explicitly enables conservative values.
+    max_order_notional: float = 0.0
+    max_option_contracts_per_order: int = 0
+    max_estimated_option_debit: float = 0.0
     # Cumulative OPENING notional per trading day. 0.0 = OFF (the default, so
     # deploying this is byte-identical until an operator opts in).
     #
@@ -147,6 +153,7 @@ class RiskGate:
         portfolio_value_evaluable: bool = True,
         position_value_evaluable: bool = True,
         sec_type: str = '',
+        order_quantity: float = 0.0,
     ) -> RiskGateResult:
         """Evaluate risk limits for an exposure-increasing order.
 
@@ -158,6 +165,30 @@ class RiskGate:
         state the gate exists to prevent.
         """
         checks: Dict[str, str] = {}
+
+        # Absolute limits are evaluated at the backend boundary, not in the
+        # TUI. ``position_value`` is computed from the qualified contract's
+        # multiplier by Executioner, so option debit is never assumed to use
+        # the standard 100 multiplier.
+        if self.limits.max_order_notional > 0:
+            if position_value > self.limits.max_order_notional:
+                checks['max_order_notional'] = 'fail'
+                return RiskGateResult(False, f'order notional {position_value:.2f} exceeds '
+                                      f'{self.limits.max_order_notional:.2f}', checks)
+            checks['max_order_notional'] = 'pass'
+        if str(sec_type).upper() == 'OPT':
+            if self.limits.max_option_contracts_per_order > 0 and abs(order_quantity) > self.limits.max_option_contracts_per_order:
+                checks['max_option_contracts'] = 'fail'
+                return RiskGateResult(False, f'option contracts {abs(order_quantity):g} exceeds '
+                                      f'{self.limits.max_option_contracts_per_order}', checks)
+            if self.limits.max_option_contracts_per_order > 0:
+                checks['max_option_contracts'] = 'pass'
+            if self.limits.max_estimated_option_debit > 0 and position_value > self.limits.max_estimated_option_debit:
+                checks['max_option_debit'] = 'fail'
+                return RiskGateResult(False, f'estimated option debit {position_value:.2f} exceeds '
+                                      f'{self.limits.max_estimated_option_debit:.2f}', checks)
+            if self.limits.max_estimated_option_debit > 0:
+                checks['max_option_debit'] = 'pass'
 
         # Max open orders check
         if open_order_count >= self.limits.max_open_orders:

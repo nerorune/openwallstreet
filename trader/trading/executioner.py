@@ -412,6 +412,7 @@ class TradeExecutioner():
                 portfolio_value_evaluable=inputs.portfolio_value_evaluable,
                 position_value_evaluable=position_value_hint is not None,
                 sec_type=contract.secType or '',
+                order_quantity=float(order.totalQuantity or 0),
             )
             if not result.approved:
                 self._log_event(EventType.RISK_GATE_REJECTED, contract, order)
