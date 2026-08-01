@@ -18,7 +18,7 @@ async def test_demo_tui_renders_paper_dashboard() -> None:
     app = MMRTerminal(demo=True, watchlist=["QQQ", "AAPL"])
     async with app.run_test() as pilot:
         await pilot.pause(0.25)
-        assert "PAPER DATA" in str(app.query_one("#topline").render())
+        assert "PAPER ACCOUNT" in str(app.query_one("#topline").render())
         assert "EXECUTION LOCKED" in str(app.query_one("#topline").render())
         assert app.query_one("#watchlist").row_count == 2
         await pilot.press("d")

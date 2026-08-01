@@ -48,8 +48,9 @@ For a regular IBKR login used only for live market data, set
 `trading_mode: live`, `ib_read_only: true`, and `execution_enabled: false` in
 the protected user config, then run `./scripts/ibkr-tui login --live`. Gateway
 also receives `READ_ONLY_API=yes`. MMR refuses every placement at its public
-RPC and final IB placement boundaries, while the TUI reports `LIVE DATA |
-EXECUTION LOCKED`. Enabling trading later requires a deliberate configuration
+RPC and final IB placement boundaries, while the TUI reports `LIVE ACCOUNT |
+EXECUTION LOCKED` and labels every broker quote LIVE, DELAYED, STALE, or
+UNAVAILABLE. Enabling trading later requires a deliberate configuration
 change and Gateway restart; it is never toggled by a TUI keypress.
 
 ## IBKR paper login

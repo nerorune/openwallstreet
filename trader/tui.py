@@ -333,7 +333,7 @@ class MMRTerminal(App):
         self.state = state
         self._busy = False
         self.query_one("#topline", Static).update(
-            f"MMR IBKR TUI  |  {state.trading_mode} DATA  |  EXECUTION "
+            f"MMR IBKR TUI  |  {state.trading_mode} ACCOUNT  |  EXECUTION "
             f"{'ENABLED' if state.execution_enabled else 'LOCKED'}  |  "
             f"{'CONNECTED' if state.connected else 'DISCONNECTED'}"
             f"  |  Account {_masked_account(state.account)}"
@@ -343,7 +343,7 @@ class MMRTerminal(App):
             value = values.get(name, {})
             return value.get("value") if isinstance(value, dict) else value
         self.query_one("#account", Static).update(
-            f"Account  |  {state.trading_mode} DATA  |  EXECUTION "
+            f"Account  |  {state.trading_mode} ACCOUNT  |  EXECUTION "
             f"{'ENABLED' if state.execution_enabled else 'LOCKED'}\n"
             f"Net Liq {_money(account_value('NetLiquidation'))}  Cash {_money(account_value('TotalCashValue'))}\n"
             f"Available {_money(account_value('AvailableFunds'))}  Buying Power {_money(account_value('BuyingPower'))}\n"
