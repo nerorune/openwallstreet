@@ -139,9 +139,15 @@ class OpenWallStreetTerminal(MMRTerminal):
     CSS = MMRTerminal.CSS + SETTINGS_CSS
     BINDINGS = MMRTerminal.BINDINGS + [("s", "settings", "Settings")]
 
-    def __init__(self, demo: bool = False, watchlist: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        demo: bool = False,
+        watchlist: list[str] | None = None,
+        *,
+        ui_store: UISettingsStore | None = None,
+    ) -> None:
         super().__init__(demo=demo, watchlist=watchlist)
-        self.ui_store = UISettingsStore()
+        self.ui_store = ui_store or UISettingsStore()
         explicit = [symbol.strip().upper() for symbol in (watchlist or []) if symbol.strip()]
         persisted = self.ui_store.settings.manual_symbols
         selected = explicit or persisted or list(DEFAULT_WATCHLIST)
