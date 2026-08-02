@@ -1,8 +1,15 @@
-# MMR IBKR TUI
+# OpenWallStreet contributor guide
 
-MMR is the only trading backend. `trader/tui.py` is a Textual client of its
-SDK/RPC surfaces; it must never create an independent `ib_async` session or
-traverse internal service objects.
+OpenWallStreet is an under-development MMR-derived workstation. MMR is the
+only trading backend. `trader/tui.py` is a Textual client of its SDK/RPC
+surfaces; it must never create an independent `ib_async` session or traverse
+internal service objects.
+
+Keep the fork's purpose clear: OpenWallStreet owns terminal UX, lifecycle
+tooling, documentation, and safety hardening; MMR owns IBKR connectivity,
+contracts, proposals, risk, execution, services, and storage. Preserve the
+upstream license and notices, maintain the `upstream` remote, and keep local
+changes modular and mergeable.
 
 Paper mode is the default and live trading must remain disabled unless an
 operator deliberately changes the secured user configuration. New exposure
@@ -17,5 +24,6 @@ deserialization.
 
 Run `uv run pytest -q`, `uv run ty check`, and `uv run mmr tui --demo` for
 changes. Never commit credentials, MFA values, account IDs, `.env`,
-`~/.config/mmr/secrets.env`, or DuckDB data. Keep local changes modular on a
-dedicated branch so upstream MMR remains mergeable.
+`~/.config/mmr/secrets.env`, or DuckDB data. The repository is public but
+direct write access remains owner-only until a contribution process is
+documented.

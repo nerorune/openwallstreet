@@ -1,24 +1,53 @@
-<p align="center">
-  <img src="docs/logo-1.png" alt="MMR - Make Me Rich" width="700">
-</p>
+# OpenWallStreet
 
-<h1 align="center">MMR — Make Me Rich</h1>
-
-<p align="center">
-  <strong>An LLM-native algorithmic trading platform for Interactive Brokers</strong>
-</p>
+> **Under development.** A local-first, terminal-native Interactive Brokers
+> workstation for research, account monitoring, proposal review, and deliberate
+> operator-controlled trading.
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-%3E%3D3.12-blue" alt="Python">
   <img src="https://img.shields.io/badge/IB-Gateway%20%2F%20TWS-red" alt="Interactive Brokers">
   <img src="https://img.shields.io/badge/storage-DuckDB-yellow" alt="DuckDB">
   <img src="https://img.shields.io/badge/messaging-ZeroMQ-green" alt="ZeroMQ">
+  <img src="https://img.shields.io/badge/status-under%20development-orange" alt="Under development">
   <img src="https://img.shields.io/badge/license-Apache%202.0%20%2B%20Commons%20Clause-lightgrey" alt="License">
 </p>
 
 ---
 
-MMR is a Python trading platform built to be operated by both humans and LLMs. It connects to Interactive Brokers via [ib_async](https://github.com/ib-api-reloaded/ib_async), uses ZeroMQ for inter-service messaging, DuckDB for storage, and exposes every operation as a JSON-returning CLI command — making it a natural fit for LLM agents that trade autonomously.
+OpenWallStreet is a public development fork of
+[MMR](https://github.com/9600dev/mmr). It preserves MMR as the trading backend
+and adds a responsive Textual terminal, secure local lifecycle tooling, and
+read-only live-account monitoring. It connects to Interactive Brokers through
+MMR's existing `ib_async`/ZeroMQ/DuckDB architecture; the TUI does not open a
+competing broker connection or bypass MMR's risk and proposal boundaries.
+
+This project is not affiliated with or endorsed by MMR's authors. It is not an
+independent rewrite of MMR, and MMR-derived files retain the repository's
+Apache-2.0-with-Commons-Clause licensing and notices. See
+[OpenWallStreet's project boundary and roadmap](docs/OPENWALLSTREET.md) and
+[LICENSE.md](LICENSE.md).
+
+## What OpenWallStreet is building
+
+- A keyboard-first trading terminal that works locally, over SSH, in tmux, and
+  at narrow terminal widths.
+- Clear account and quote state: paper versus live account, and live versus
+  delayed, stale, or unavailable market data.
+- Proposal review, risk visibility, auditability, trade journaling, and a
+  foundation for future strategy/agent workflows.
+- A default-deny execution model. Paper is the normal operating mode; a live
+  account may be connected for market data while execution remains locked.
+
+Do not use the project to place trades until its controls have been separately
+reviewed for your account and operating environment. Current development work
+is focused on reliability, visibility, and guardrails rather than unattended
+execution.
+
+## Upstream MMR foundation
+
+MMR is a Python trading platform built to be operated by both humans and LLMs.
+It connects to Interactive Brokers via [ib_async](https://github.com/ib-api-reloaded/ib_async), uses ZeroMQ for service messaging and DuckDB for storage, and exposes JSON-returning CLI commands.
 
 ## Why LLM-Native?
 
@@ -36,8 +65,8 @@ Most trading platforms are built for humans staring at charts. MMR is built for 
 The fastest way to get running is Docker — one command builds the image, starts IB Gateway, prompts for your credentials, and SSH's you in:
 
 ```bash
-git clone https://github.com/9600dev/mmr.git
-cd mmr
+git clone https://github.com/nerorune/openwallstreet.git
+cd openwallstreet
 ./docker.sh -g
 ```
 
