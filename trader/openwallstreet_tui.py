@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import argparse
 
 from trader.settings_scoped import ProductionSettingsScreen
@@ -153,9 +155,34 @@ class OpenWallStreetTerminal(MMRTerminal):
         selected = explicit or persisted or list(DEFAULT_WATCHLIST)
         self.watchlist = selected[:MAX_WATCHLIST_SYMBOLS]
         self._startup_theme = normalize_theme(self.ui_store.settings.theme)
-        if isinstance(self.backend, DemoBackend):
+
+        if demo:
+            config_dir = self.ui_store.path.parent
+            self.settings_config = {
+                "trading_mode": "paper",
+                "execution_enabled": False,
+                "ib_read_only": True,
+                "require_proposal_approval": True,
+                "ib_server_address": "127.0.0.1",
+                "ib_server_port": 7497,
+                "risk_limits": {
+                    "max_daily_loss": 1000.0,
+                    "max_open_orders": 10,
+                    "max_leverage": 1.0,
+                },
+            }
+            self.settings_config_path = config_dir / "demo-trader.yaml"
+            self.settings_secrets_path = config_dir / "demo-secrets.env"
+            self.settings_gateway_env_path = config_dir / "demo-gateway.env"
             self.backend.display_name = "Demo backend"
         else:
+            from trader.container import Container, mmr_root
+
+            container = Container.instance()
+            self.settings_config = dict(container.config())
+            self.settings_config_path = Path(container.config_file).expanduser()
+            self.settings_secrets_path = Path("~/.config/mmr/secrets.env").expanduser()
+            self.settings_gateway_env_path = mmr_root() / ".env"
             self.backend.display_name = "MMR SDK/RPC"
 
     def on_mount(self) -> None:
