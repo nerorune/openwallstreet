@@ -6,12 +6,30 @@ from rich.text import Text
 from textual import events
 from textual.widgets import Static
 
+from trader.settings_doctor import DiagnosticsDoctor
 from trader.settings_screen import SECTION_DESCRIPTIONS, SECTIONS, SettingsScreen
 from trader.settings_store import UISettings, UISettingsError
 
 
+class ProductionDiagnosticsDoctor(DiagnosticsDoctor):
+    @property
+    def config(self) -> dict[str, object]:
+        return dict(getattr(self.app, "settings_config", {}))
+
+    @property
+    def config_path(self):
+        return getattr(self.app, "settings_config_path")
+
+
 class ProductionSettingsScreen(SettingsScreen):
     """Keep Watchlist and Appearance drafts independent."""
+
+    def __init__(self, app_ref):
+        super().__init__(app_ref)
+        self.doctor = ProductionDiagnosticsDoctor(app_ref, self.locator)
+
+    def _config(self) -> dict[str, object]:
+        return dict(getattr(self.app_ref, "settings_config", {}))
 
     def _watchlist_pending(self) -> bool:
         source, symbols, _theme, _dense, _unicode = self._saved_snapshot
