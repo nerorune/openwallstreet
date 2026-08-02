@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from rich.text import Text
 from textual import events
 from textual.widgets import Static
 
-from trader.settings_doctor import DiagnosticsDoctor
-from trader.settings_screen import SECTION_DESCRIPTIONS, SECTIONS, SettingsScreen
+from trader.settings_doctor import DiagnosticResult, DiagnosticsDoctor
+from trader.settings_screen import SECTION_DESCRIPTIONS, SECTIONS, SettingsRow, SettingsScreen
 from trader.settings_store import UISettings, UISettingsError
 
 
@@ -18,7 +20,22 @@ class ProductionDiagnosticsDoctor(DiagnosticsDoctor):
 
     @property
     def config_path(self):
-        return getattr(self.app, "settings_config_path")
+        return Path(getattr(self.app, "settings_config_path"))
+
+    @property
+    def secrets_path(self) -> Path:
+        return Path(getattr(self.app, "settings_secrets_path"))
+
+    def check_config(self) -> DiagnosticResult:
+        if getattr(self.app.backend, "is_demo", False):
+            return DiagnosticResult(
+                "config",
+                "Trader configuration",
+                "PASS",
+                "Demo configuration is isolated in memory.",
+                (str(self.config_path),),
+            )
+        return super().check_config()
 
 
 class ProductionSettingsScreen(SettingsScreen):
@@ -30,6 +47,27 @@ class ProductionSettingsScreen(SettingsScreen):
 
     def _config(self) -> dict[str, object]:
         return dict(getattr(self.app_ref, "settings_config", {}))
+
+    def _rows(self) -> list[SettingsRow]:
+        if self.category != "Credentials":
+            return super()._rows()
+        secrets = Path(self.app_ref.settings_secrets_path)
+        gateway_env = Path(self.app_ref.settings_gateway_env_path)
+
+        def status(path: Path) -> str:
+            if not path.exists():
+                return "Not present"
+            try:
+                return f"Present · {path.stat().st_mode & 0o777:04o}"
+            except OSError:
+                return "Present · unreadable metadata"
+
+        return [
+            SettingsRow("Services secrets", status(secrets)),
+            SettingsRow("Gateway environment", status(gateway_env)),
+            SettingsRow("Stored values", "Never displayed", "Locked"),
+            SettingsRow("Credential workflow", "./docker.sh -g", "External action"),
+        ]
 
     def _watchlist_pending(self) -> bool:
         source, symbols, _theme, _dense, _unicode = self._saved_snapshot
