@@ -6,7 +6,7 @@ from pathlib import Path
 
 import argparse
 
-from trader.settings_scoped import ProductionSettingsScreen
+from trader.settings_final import OpenWallStreetSettingsScreen
 from trader.settings_store import MAX_WATCHLIST_SYMBOLS, UISettingsStore
 from trader.settings_themes import normalize_theme, register_themes
 from trader.tui import DEFAULT_WATCHLIST, DemoBackend, MMRTerminal
@@ -195,7 +195,7 @@ class OpenWallStreetTerminal(MMRTerminal):
             self._apply_state(self.state)
 
     def action_settings(self) -> None:
-        self.push_screen(ProductionSettingsScreen(self))
+        self.push_screen(OpenWallStreetSettingsScreen(self))
 
 
 def run_openwallstreet_tui(demo: bool = False, watchlist: list[str] | None = None) -> None:
