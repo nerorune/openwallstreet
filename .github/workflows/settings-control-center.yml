@@ -1,0 +1,52 @@
+name: Settings control center
+
+on:
+  pull_request:
+    paths:
+      - "trader/openwallstreet_tui.py"
+      - "trader/settings_*.py"
+      - "tests/test_settings_control_center*.py"
+      - ".github/workflows/settings-control-center.yml"
+  push:
+    branches:
+      - feature/settings-control-center
+    paths:
+      - "trader/openwallstreet_tui.py"
+      - "trader/settings_*.py"
+      - "tests/test_settings_control_center*.py"
+      - ".github/workflows/settings-control-center.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  settings-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install test environment
+        run: uv sync --extra test
+      - name: Compile settings modules
+        run: >-
+          uv run python -m compileall -q
+          trader/openwallstreet_tui.py
+          trader/settings_store.py
+          trader/settings_health.py
+          trader/settings_themes.py
+          trader/settings_doctor.py
+          trader/settings_screen.py
+          trader/settings_scoped.py
+          trader/settings_final.py
+      - name: Run settings and existing TUI tests
+        run: >-
+          uv run pytest -q
+          tests/test_tui.py
+          tests/test_settings_control_center.py
+          tests/test_settings_control_center_pilot.py
