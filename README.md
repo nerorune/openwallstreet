@@ -16,11 +16,18 @@
 ---
 
 OpenWallStreet is a public development fork of
-[MMR](https://github.com/9600dev/mmr). It preserves MMR as the trading backend
-and adds a responsive Textual terminal, secure local lifecycle tooling, and
-read-only live-account monitoring. It connects to Interactive Brokers through
-MMR's existing `ib_async`/ZeroMQ/DuckDB architecture; the TUI does not open a
-competing broker connection or bypass MMR's risk and proposal boundaries.
+[MMR](https://github.com/9600dev/mmr), based on the upstream commit documented
+in [UPSTREAM.md](UPSTREAM.md). It is a single checkout and product: users do
+not install or run a separate MMR repository. OpenWallStreet includes and
+evolves the MMR-derived connectivity, service, risk, execution, and storage
+layers alongside its responsive Textual terminal, secure local lifecycle
+tooling, and read-only live-account monitoring.
+
+The fork intentionally diverges after its base commit. We retain the `upstream`
+remote and may merge or cherry-pick useful MMR changes after review, but do not
+promise byte-for-byte compatibility with either repository. The terminal still
+uses the included service/RPC boundary and never opens a competing broker
+connection or bypasses proposal and risk controls.
 
 This project is not affiliated with or endorsed by MMR's authors. It is not an
 independent rewrite of MMR, and MMR-derived files retain the repository's
@@ -44,10 +51,13 @@ reviewed for your account and operating environment. Current development work
 is focused on reliability, visibility, and guardrails rather than unattended
 execution.
 
-## Upstream MMR foundation
+## MMR-derived foundation
 
-MMR is a Python trading platform built to be operated by both humans and LLMs.
-It connects to Interactive Brokers via [ib_async](https://github.com/ib-api-reloaded/ib_async), uses ZeroMQ for service messaging and DuckDB for storage, and exposes JSON-returning CLI commands.
+The included MMR-derived foundation connects to Interactive Brokers via
+[ib_async](https://github.com/ib-api-reloaded/ib_async), uses ZeroMQ for
+service messaging and DuckDB for storage, and exposes JSON-returning CLI
+commands. Its upstream origin is acknowledged; its running code is maintained
+as part of this OpenWallStreet checkout.
 
 ## Why LLM-Native?
 
@@ -62,15 +72,85 @@ Most trading platforms are built for humans staring at charts. MMR is built for 
 
 ## Getting Started
 
-The fastest way to get running is Docker — one command builds the image, starts IB Gateway, prompts for your credentials, and SSH's you in:
+### Guided local install (recommended)
+
+The guided install creates protected local configuration, installs Python
+dependencies, and adds an `openwallstreet` launcher. It does **not** collect
+credentials, enable execution, or make the Gateway API writable.
 
 ```bash
 git clone https://github.com/nerorune/openwallstreet.git
 cd openwallstreet
-./docker.sh -g
+./install.sh
+
+# Choose paper or live monitoring, complete normal local Gateway login/MFA,
+# verify it, start the configured services,
+# and open the terminal.
+openwallstreet auth
 ```
 
-`./docker.sh -g` handles everything: builds the Docker image, prompts for your IB username/password/account, writes credentials to `.env` (gitignored), starts the IB Gateway sidecar + MMR container, and drops you into an SSH session. From there, run `./start_mmr.sh` to launch all services.
+Normal day-to-day maintenance keeps the authenticated Gateway intact:
+
+```bash
+openwallstreet restart        # restart only MMR host services
+openwallstreet rebuild        # refresh dependencies + rebuild MMR image, then restart
+```
+
+`openwallstreet rebuild --all` rebuilds the full container stack, including
+the Gateway. It deliberately requires a fresh Gateway login/MFA afterward.
+
+Use `openwallstreet doctor` for a secret-safe local readiness report. It checks
+tooling, protected configuration permissions, Gateway health, the managed MMR
+session, and local RPC ports. `openwallstreet doctor --strict` exits non-zero
+when any check needs attention; neither form reads or prints credential values.
+
+For the shortest interactive flow, `openwallstreet auth` starts the read-only
+Gateway, pauses for local VNC/MFA at `vnc://localhost:5901`, verifies its
+health, starts the managed services in the configured mode, and then opens the dashboard.
+`openwallstreet auth --settings` lands directly in the Settings center after
+the same verification. `openwallstreet gateway` is an alias for this flow;
+use `openwallstreet gateway login` when you only want to start the Gateway.
+Use `openwallstreet --settings` when you want to land directly in the TUI
+Settings control center; `openwallstreet --tui` is an explicit dashboard
+alias. Run `openwallstreet --help` for the complete menu.
+
+Additional local product areas can be added as executable scripts in
+`scripts/openwallstreet.d/`; each becomes an `openwallstreet <name>` command.
+They receive the checkout path in `$OPENWALLSTREET_ROOT`. Run
+`openwallstreet commands` to see available extensions.
+
+`openwallstreet start` runs the host services in a named `tmux` session, so
+they keep running after the command returns. Use `openwallstreet stop` to stop
+only those services; it deliberately leaves the Gateway authenticated and
+running.
+
+The installer adds `~/.local/bin` to the user login and interactive shell
+startup files. Open a new terminal after installation, or run
+`export PATH="$HOME/.local/bin:$PATH"` in the current one.
+The first login writes the protected, gitignored `.env` and explicitly asks
+whether to use paper or live monitoring; later starts honor that configured
+mode. The generated Gateway configuration has `READ_ONLY_API=yes`. VNC and MFA are local-only at
+`vnc://localhost:5901`.
+
+Useful commands:
+
+```bash
+openwallstreet demo                 # no broker connection
+openwallstreet gateway configure    # fill missing safe Gateway settings from trader.yaml
+openwallstreet gateway status
+openwallstreet gateway reconnect    # requires MFA again
+openwallstreet doctor
+openwallstreet logs
+```
+
+### Existing Docker flow
+
+The original Docker entry point remains available for development and advanced
+container workflows:
+
+```bash
+./docker.sh -g
+```
 
 ```bash
 # Once inside the container:
@@ -104,6 +184,8 @@ On first run, `start_mmr.sh` auto-launches the setup wizard to configure IB Gate
 ### Requirements
 
 - Python >= 3.12
+- [uv](https://docs.astral.sh/uv/) and `tmux` for the guided local flow
+- Docker or Podman for the bundled localhost-only IB Gateway
 - Interactive Brokers account with [IB Gateway](https://www.interactivebrokers.com/en/trading/ibgateway-stable.php) or TWS
 - Market data subscriptions for target exchanges
 

@@ -464,14 +464,17 @@ setup_credentials() {
     read -p "IB account number (U... for live, DU... for paper): " account
 
     echo ""
-    echo "Trading mode:"
-    echo "  1) paper (default)"
-    echo "  2) live"
-    read -p "Select [1]: " mode_choice
-    case "${mode_choice:-1}" in
-        2|live) trading_mode="live" ;;
-        *) trading_mode="paper" ;;
-    esac
+    echo "Trading mode (required):"
+    echo "  1) paper — uses a paper account"
+    echo "  2) live monitor — uses a live account, but OpenWallStreet still locks execution"
+    while true; do
+        read -p "Select paper or live: " mode_choice
+        case "${mode_choice,,}" in
+            1|paper) trading_mode="paper"; break ;;
+            2|live) trading_mode="live"; break ;;
+            *) echo "Choose paper or live. No mode is selected by default." ;;
+        esac
+    done
 
     read -p "Timezone [America/New_York]: " timezone
     timezone="${timezone:-America/New_York}"
@@ -521,7 +524,10 @@ VNC_SERVER_PASSWORD=${vnc_password}
 
 # IB Gateway settings
 TWS_ACCEPT_INCOMING=accept
-READ_ONLY_API=no
+# OpenWallStreet starts as a monitoring workstation.  An operator must
+# deliberately change this to `no` and complete the separate execution gates
+# before the Gateway will accept mutating API calls.
+READ_ONLY_API=yes
 TWOFA_TIMEOUT_ACTION=restart
 RELOGIN_AFTER_TWOFA_TIMEOUT=yes
 EXISTING_SESSION_DETECTED_ACTION=primaryoverride

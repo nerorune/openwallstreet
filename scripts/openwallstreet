@@ -1,0 +1,436 @@
+#!/usr/bin/env bash
+# Friendly local launcher.  All broker lifecycle work remains delegated to the
+# existing docker.sh/start_mmr.sh wrappers; this script never talks to IBKR.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" = /* ]] || SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+COMMAND_DIR="$ROOT/scripts/openwallstreet.d"
+cd "$ROOT"
+
+usage() {
+    cat <<'USAGE'
+OpenWallStreet — local-first IBKR workstation
+
+Usage: openwallstreet [--tui | --settings | <command>]
+
+Quick entry points:
+  --tui, tui         Open the main terminal dashboard
+  --settings, settings
+                     Open the main terminal directly in Settings
+  auth               Complete Gateway login/MFA, verify health, then open TUI
+  auth --settings    Complete authentication, then open TUI Settings
+  gateway            Alias for `auth`
+
+Lifecycle:
+  install            Run the local installer
+  gateway login      Start/read-only IB Gateway only; complete MFA via VNC
+  gateway configure  Complete missing safe Gateway settings from trader.yaml
+  gateway status     Show local Gateway container status
+  gateway reconnect  Restart Gateway; MFA will be required again
+  start              Start MMR host services in the configured mode (paper or live monitor)
+  stop               Stop the host MMR session (Gateway remains running)
+  restart            Restart host MMR services; Gateway remains running
+  rebuild            Rebuild local dependencies + MMR image, then restart host services
+  rebuild --all      Rebuild the full container stack; Gateway login/MFA required
+  logs               Tail Gateway/MMR logs
+  doctor [--strict]  Secret-safe readiness report; strict exits non-zero on warnings
+  demo               Open the no-broker demo terminal
+  commands           List built-in commands and installed local extensions
+  version            Show launcher version
+
+The configured trading mode is honored. Execution stays locked and the Gateway
+API stays read-only until an operator deliberately completes the separate live
+execution controls.
+
+Extensions: executable scripts named [a-z0-9-] in scripts/openwallstreet.d/
+are available as `openwallstreet <name>`. They receive the checkout path in
+OPENWALLSTREET_ROOT and are responsible for their own help and safety checks.
+USAGE
+}
+
+list_commands() {
+    printf 'Built-in commands: gateway (login/configure/status/reconnect), start, stop, restart, rebuild, tui, settings, demo, logs, doctor, install\n'
+    printf 'Flag aliases: --tui, --settings\n'
+    printf '\nLocal extensions:\n'
+    local found=false command
+    if [ -d "$COMMAND_DIR" ]; then
+        for command in "$COMMAND_DIR"/*; do
+            [ -x "$command" ] || continue
+            printf '  %s\n' "$(basename "$command")"
+            found=true
+        done
+    fi
+    "$found" || printf '  (none installed)\n'
+}
+
+configured_trading_mode() {
+    local config_path="${TRADER_CONFIG:-$HOME/.config/mmr/trader.yaml}" mode
+    [ -f "$config_path" ] || {
+        printf 'Trader configuration is missing. Run: openwallstreet install\n' >&2
+        return 1
+    }
+    mode="$(awk -F: '/^[[:space:]]*trading_mode[[:space:]]*:/ {print tolower($2); exit}' "$config_path" | tr -d " '\"")"
+    case "$mode" in
+        paper|live) printf '%s\n' "$mode" ;;
+        *)
+            printf 'Trading mode is not configured in %s. Choose paper or live during `openwallstreet auth`.\n' "$config_path" >&2
+            return 1
+            ;;
+    esac
+}
+
+env_value() {
+    local key="$1"
+    [ -f .env ] || return 1
+    sed -n "s/^${key}=//p" .env | tail -n 1
+}
+
+append_env_setting_if_missing() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" .env; then
+        return 1
+    fi
+    printf '%s=%s\n' "$key" "$value" >> .env
+}
+
+set_configured_trading_mode() {
+    local mode="$1" config_path="${TRADER_CONFIG:-$HOME/.config/mmr/trader.yaml}"
+    case "$mode" in paper|live) ;; *) return 1 ;; esac
+    [ -f "$config_path" ] || return 1
+    sed -i.bak "s/^[[:space:]]*trading_mode[[:space:]]*:.*/trading_mode: ${mode}/" "$config_path"
+    rm -f "${config_path}.bak"
+    chmod 600 "$config_path"
+}
+
+prepare_gateway_environment() {
+    [ -f .env ] || return 1
+    local mode account_key account changed=false
+    mode="$(configured_trading_mode)" || return 1
+    account_key="ib_${mode}_account"
+    account="$(awk -F: -v key="$account_key" '$1 == key {print $2; exit}' "${TRADER_CONFIG:-$HOME/.config/mmr/trader.yaml}" | tr -d " '\"")"
+    append_env_setting_if_missing TRADING_MODE "$mode" && changed=true
+    append_env_setting_if_missing READ_ONLY_API yes && changed=true
+    append_env_setting_if_missing TIME_ZONE America/New_York && changed=true
+    [ -n "$account" ] && append_env_setting_if_missing IB_ACCOUNT "$account" && changed=true
+    chmod 600 .env
+    if [ "$changed" = true ]; then
+        install -d -m 700 "$HOME/.config/openwallstreet"
+        : > "$HOME/.config/openwallstreet/gateway-settings-pending"
+        chmod 600 "$HOME/.config/openwallstreet/gateway-settings-pending"
+    fi
+    return 0
+}
+
+ensure_read_only_env() {
+    if [ ! -f .env ]; then
+        printf 'Gateway credentials are not set. Run: openwallstreet auth\n' >&2
+        exit 1
+    fi
+    if ! grep -q '^READ_ONLY_API=yes$' .env; then
+        printf 'Gateway is not configured read-only. Run: openwallstreet auth\n' >&2
+        exit 1
+    fi
+    local configured gateway
+    configured="$(configured_trading_mode)" || exit 1
+    gateway="$(env_value TRADING_MODE || true)"
+    if [ "$gateway" != "$configured" ]; then
+        printf 'Gateway mode (%s) does not match trader configuration (%s). Run: openwallstreet auth\n' "${gateway:-unset}" "$configured" >&2
+        exit 1
+    fi
+}
+
+start_services() {
+    ensure_read_only_env
+    local mode
+    mode="$(configured_trading_mode)"
+    command -v tmux >/dev/null || { printf 'tmux is required for the managed startup flow.\n' >&2; exit 1; }
+    if tmux has-session -t openwallstreet 2>/dev/null; then
+        printf 'OpenWallStreet services are already running.\n'
+        return
+    fi
+    tmux new-session -d -s openwallstreet "cd '$ROOT' && exec ./start_mmr.sh --$mode"
+    printf 'Starting %s monitor services in tmux session openwallstreet (execution remains locked).\n' "$mode"
+    printf 'Troubleshoot: tmux attach -t openwallstreet\n'
+}
+
+stop_services() {
+    if ! tmux has-session -t openwallstreet 2>/dev/null; then
+        printf 'No named OpenWallStreet tmux session is running.\n'
+        return 0
+    fi
+    tmux send-keys -t openwallstreet C-c
+    local attempt
+    for attempt in $(seq 1 15); do
+        tmux has-session -t openwallstreet 2>/dev/null || {
+            printf 'OpenWallStreet host services stopped; IB Gateway is unchanged.\n'
+            return 0
+        }
+        sleep 1
+    done
+    printf 'Host services are still stopping. Inspect: tmux attach -t openwallstreet\n' >&2
+    return 1
+}
+
+restart_services() {
+    stop_services
+    start_services
+    printf 'Run: openwallstreet tui\n'
+}
+
+gateway_runtime() {
+    if command -v docker >/dev/null && docker info >/dev/null 2>&1; then
+        printf 'docker'
+    elif command -v podman >/dev/null && podman info >/dev/null 2>&1; then
+        printf 'podman'
+    else
+        printf 'none'
+    fi
+}
+
+gateway_status() {
+    local runtime
+    runtime="$(gateway_runtime)"
+    [ "$runtime" != none ] || return 1
+    "$runtime" ps --filter 'name=mmr[-_]ib-gateway' --format '{{.Status}}' | head -n 1
+}
+
+file_mode() {
+    if stat -c '%a' "$1" >/dev/null 2>&1; then
+        stat -c '%a' "$1"
+    else
+        stat -f '%Lp' "$1"
+    fi
+}
+
+port_open() {
+    python3 -c 'import socket, sys; s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), 1); s.close()' "$1" >/dev/null 2>&1
+}
+
+run_doctor() {
+    local strict="${1:-}" warnings=0 status mode port
+    report() {
+        local level="$1" label="$2" detail="$3"
+        printf '  %-4s %-18s %s\n' "[$level]" "$label" "$detail"
+        if [ "$level" != PASS ]; then
+            warnings=1
+        fi
+    }
+
+    printf 'OpenWallStreet doctor\n'
+    printf 'Checkout: %s\n\n' "$ROOT"
+
+    command -v python3 >/dev/null && report PASS 'Python' "$(python3 --version)" || report WARN 'Python' 'missing — run ./install.sh'
+    command -v uv >/dev/null && report PASS 'uv' "$(uv --version)" || report WARN 'uv' 'missing — run ./install.sh'
+    command -v tmux >/dev/null && report PASS 'tmux' 'available' || report WARN 'tmux' 'missing — managed start/restart requires it'
+
+    if [ -f "$HOME/.config/mmr/trader.yaml" ]; then
+        mode="$(file_mode "$HOME/.config/mmr/trader.yaml")"
+        [ "$mode" = 600 ] && report PASS 'MMR config' 'present, protected (0600)' || report WARN 'MMR config' "present but mode $mode (expected 600)"
+    else
+        report WARN 'MMR config' 'missing — run ./install.sh'
+    fi
+    if [ -f "$HOME/.config/openwallstreet/ui.yaml" ]; then
+        mode="$(file_mode "$HOME/.config/openwallstreet/ui.yaml")"
+        [ "$mode" = 600 ] && report PASS 'UI preferences' 'present, protected (0600)' || report WARN 'UI preferences' "present but mode $mode (expected 600)"
+    else
+        report PASS 'UI preferences' 'not created yet (defaults will be used)'
+    fi
+    if [ -f .env ]; then
+        mode="$(file_mode .env)"
+        [ "$mode" = 600 ] && report PASS 'Credentials' 'present, protected (0600; values not inspected)' || report WARN 'Credentials' "present but mode $mode (expected 600; values not inspected)"
+        local configured gateway_mode
+        configured="$(configured_trading_mode || true)"
+        gateway_mode="$(env_value TRADING_MODE || true)"
+        if [ -f "$HOME/.config/openwallstreet/gateway-settings-pending" ]; then
+            report WARN 'Gateway settings' 'saved locally — run openwallstreet gateway reconnect and complete MFA'
+        elif [ "$gateway_mode" = "$configured" ] && grep -q '^READ_ONLY_API=yes$' .env; then
+            report PASS 'Gateway settings' "$configured monitor mode, read-only API"
+        else
+            report WARN 'Gateway settings' 'incomplete or mismatched — run openwallstreet gateway configure, then gateway reconnect + MFA'
+        fi
+    else
+        report WARN 'Credentials' 'missing — run openwallstreet auth'
+    fi
+
+    status="$(gateway_status || true)"
+    if [[ "$status" == *healthy* ]]; then
+        report PASS 'IB Gateway' "$status (localhost-only)"
+    elif [ -n "$status" ]; then
+        report WARN 'IB Gateway' "$status — inspect VNC/MFA at vnc://localhost:5901"
+    else
+        report WARN 'IB Gateway' 'not running — run openwallstreet auth'
+    fi
+
+    if tmux has-session -t openwallstreet 2>/dev/null; then
+        report PASS 'MMR session' 'tmux session openwallstreet is running'
+    else
+        report WARN 'MMR session' 'not running — run openwallstreet start or auth'
+    fi
+    for port in 42001 42003 42005; do
+        if port_open "$port"; then
+            report PASS "RPC $port" 'localhost reachable'
+        else
+            report WARN "RPC $port" 'not reachable'
+        fi
+    done
+
+    printf '\nSafety: configured mode / execution locked / read-only Gateway API required.\n'
+    if [ "$warnings" -eq 0 ]; then
+        printf 'Result: ready. Open the terminal with: openwallstreet --tui\n'
+    else
+        printf 'Result: attention needed. No credential values were read or displayed.\n'
+    fi
+    if [ "$strict" = --strict ] && [ "$warnings" -ne 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
+wait_for_gateway_health() {
+    local status attempt
+    for attempt in $(seq 1 60); do
+        status="$(gateway_status || true)"
+        if [[ "$status" == *healthy* ]]; then
+            printf 'Gateway health verified: %s\n' "$status"
+            return 0
+        fi
+        printf 'Waiting for Gateway login/MFA (%s/60): %s\n' "$attempt" "${status:-not running}"
+        sleep 5
+    done
+    printf 'Gateway did not become healthy within five minutes. Keep the VNC session open and run `openwallstreet gateway status`; do not restart unless needed.\n' >&2
+    return 1
+}
+
+authenticate_and_open() {
+    local destination="${1:-tui}"
+    local status first_setup=false
+    if ! prepare_gateway_environment; then
+        first_setup=true
+        printf 'Gateway credentials are not configured yet; starting secure first-time setup.\n'
+    fi
+    status="$(gateway_status || true)"
+    if [ -z "$status" ]; then
+        "$ROOT/docker.sh" --ib-only
+    elif [ -f "$HOME/.config/openwallstreet/gateway-settings-pending" ]; then
+        printf 'Restarting the existing Gateway to load its updated local settings; MFA will be required.\n'
+        "$ROOT/docker.sh" --restart-ib
+    else
+        printf 'Reusing existing Gateway: %s\n' "$status"
+    fi
+    if [ "$first_setup" = true ]; then
+        set_configured_trading_mode "$(env_value TRADING_MODE)" || {
+            printf 'Gateway setup completed but its trading mode could not be saved to trader.yaml. Run `openwallstreet settings` to correct it before starting services.\n' >&2
+            return 1
+        }
+    fi
+    if [ -f .env ]; then
+        prepare_gateway_environment
+    fi
+    ensure_read_only_env
+    rm -f "$HOME/.config/openwallstreet/gateway-settings-pending"
+
+    printf '\nGateway started in read-only mode.\n'
+    printf 'Complete login and any MFA in VNC: vnc://localhost:5901\n'
+    printf 'Nothing in this flow bypasses MFA or enables execution.\n\n'
+    read -r -p 'After MFA is complete, press Enter to verify Gateway health: '
+
+    wait_for_gateway_health
+    start_services
+    if [ "$destination" = settings ]; then
+        exec uv run mmr tui --settings
+    fi
+    exec uv run mmr tui
+}
+
+case "${1:-help}" in
+    install) exec "$ROOT/install.sh" ;;
+    gateway)
+        case "${2:-}" in
+            '') authenticate_and_open tui ;;
+            login)
+                prepare_gateway_environment || { printf 'Gateway credentials are missing. Run: openwallstreet auth\n' >&2; exit 1; }
+                ensure_read_only_env
+                exec "$ROOT/docker.sh" --ib-only
+                ;;
+            configure)
+                prepare_gateway_environment || {
+                    printf 'Gateway credentials are missing. Run: openwallstreet auth\n' >&2
+                    exit 1
+                }
+                install -d -m 700 "$HOME/.config/openwallstreet"
+                : > "$HOME/.config/openwallstreet/gateway-settings-pending"
+                chmod 600 "$HOME/.config/openwallstreet/gateway-settings-pending"
+                printf 'Gateway settings completed from trader.yaml. Restart the Gateway and complete MFA: openwallstreet gateway reconnect\n'
+                ;;
+            status)
+                status="$(gateway_status || true)"
+                printf 'Gateway: %s\n' "${status:-not running}"
+                ;;
+            reconnect)
+                ensure_read_only_env
+                "$ROOT/docker.sh" --restart-ib
+                rm -f "$HOME/.config/openwallstreet/gateway-settings-pending"
+                ;;
+            help|-h|--help) usage ;;
+            *) usage; exit 2 ;;
+        esac
+        ;;
+    auth)
+        case "${2:-}" in
+            ''|--tui) authenticate_and_open tui ;;
+            --settings) authenticate_and_open settings ;;
+            help|-h|--help) usage ;;
+            *) printf 'Unknown auth option: %s\n' "$2" >&2; exit 2 ;;
+        esac
+        ;;
+    start)
+        start_services
+        printf 'Run: openwallstreet tui\n'
+        ;;
+    restart) restart_services ;;
+    rebuild)
+        case "${2:-}" in
+            '')
+                printf 'Rebuilding local dependencies and the MMR image; Gateway remains running.\n'
+                uv sync --extra test --extra dev
+                "$ROOT/docker.sh" --build
+                restart_services
+                ;;
+            --all)
+                printf 'Full container rebuild: IB Gateway will restart and MFA will be required again.\n'
+                ensure_read_only_env
+                exec "$ROOT/docker.sh" --go
+                ;;
+            help|-h|--help) usage ;;
+            *) printf 'Unknown rebuild option: %s\n' "$2" >&2; exit 2 ;;
+        esac
+        ;;
+    tui|--tui) exec uv run mmr tui ;;
+    settings|--settings) exec uv run mmr tui --settings ;;
+    demo) exec uv run mmr tui --demo ;;
+    logs) exec "$ROOT/docker.sh" --logs ;;
+    stop) stop_services ;;
+    doctor)
+        case "${2:-}" in
+            ''|--strict) run_doctor "${2:-}" ;;
+            help|-h|--help) usage ;;
+            *) printf 'Unknown doctor option: %s\n' "$2" >&2; exit 2 ;;
+        esac
+        ;;
+    commands) list_commands ;;
+    version) printf 'OpenWallStreet launcher 0.1.0\n' ;;
+    help|-h|--help) usage ;;
+    *)
+        if [[ "$1" =~ ^[a-z0-9-]+$ ]] && [ -x "$COMMAND_DIR/$1" ]; then
+            export OPENWALLSTREET_ROOT="$ROOT"
+            exec "$COMMAND_DIR/$1" "${@:2}"
+        fi
+        printf 'Unknown command: %s\n\n' "$1" >&2; usage; exit 2
+        ;;
+esac

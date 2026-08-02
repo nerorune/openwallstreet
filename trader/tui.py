@@ -12,14 +12,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from random import Random
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 import math
 import pandas as pd
-from textual.app import App, ComposeResult
+from textual.app import App, ComposeResult, SystemCommand
 from textual.containers import Container, Grid, Horizontal, Vertical
-from textual.screen import ModalScreen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Static
+
+from trader.settings_tui import DiagnosticsScreen, SettingsScreen
 
 
 DEFAULT_WATCHLIST = (
@@ -180,6 +182,9 @@ class MMRBackend:
             return f"Proposal #{proposal_id} approved; MMR accepted the request."
         return f"MMR refused proposal #{proposal_id}: {result.error or 'unknown error'}"
 
+    def set_risk_limits(self, **changes: Any) -> dict[str, Any]:
+        return self.mmr.set_risk_limits(**changes)
+
     def close(self) -> None:
         self.mmr.close()
 
@@ -258,7 +263,13 @@ class MMRTerminal(App):
     #topline, #activity, #qqq, #account { border: round $primary; padding: 0 1; }
     #main { height: 1fr; grid-size: 2; grid-gutter: 1; }
     DataTable { height: 1fr; min-height: 8; }
-    #confirm, #ticket { width: 70; max-width: 95%; height: auto; border: thick $primary; background: $panel; padding: 1 2; }
+    #confirm, #ticket, #settings, #risk-editor, #live-wizard, #credential-editor, #diagnostics { width: 88; max-width: 95%; height: auto; border: thick #287dff; background: #101925; padding: 1 2; }
+    #settings { height: 85%; grid-size: 2; grid-columns: 28 1fr; grid-gutter: 1; }
+    #settings-title, #settings-review { column-span: 2; border: round #38506f; padding: 0 1; }
+    #settings-categories { border: round #38506f; padding: 1; }
+    #settings-detail { border: round #287dff; padding: 1; overflow-y: auto; }
+    .settings-compact #settings { grid-size: 1; grid-columns: 1fr; height: 95%; }
+    .settings-compact #settings-title, .settings-compact #settings-review { column-span: 1; }
     #confirm-help { color: $text-muted; margin-top: 1; }
     .compact #main { grid-size: 1; }
     .compact #qqq { display: none; }
@@ -267,13 +278,15 @@ class MMRTerminal(App):
     BINDINGS = [
         ("r", "refresh", "Refresh"), ("o", "order_preview", "Order preview"),
         ("a", "approve_selected", "Approve proposal"), ("x", "reject_selected", "Reject proposal"),
-        ("d", "doctor", "Doctor"), ("q", "quit", "Quit"),
+        ("d", "diagnostics", "Diagnostics"), ("s", "settings", "Settings"), ("q", "quit", "Quit"),
     ]
 
-    def __init__(self, demo: bool = False, watchlist: list[str] | None = None) -> None:
+    def __init__(self, demo: bool = False, watchlist: list[str] | None = None,
+                 open_settings: bool = False) -> None:
         super().__init__()
         self.backend = DemoBackend() if demo else MMRBackend()
         self.watchlist: list[str] = list(watchlist or DEFAULT_WATCHLIST)
+        self.open_settings = open_settings
         self.state = TerminalState()
         self._busy = False
 
@@ -296,6 +309,8 @@ class MMRTerminal(App):
         self._init_tables()
         self.action_refresh()
         self.set_interval(5, self.action_refresh)
+        if self.open_settings:
+            self.push_screen(SettingsScreen(self))
 
     def on_resize(self, event) -> None:
         """Use a single-column fallback for SSH/mobile-width terminals."""
@@ -461,11 +476,30 @@ class MMRTerminal(App):
         )
         self._apply_state(self.state)
 
+    def action_settings(self) -> None:
+        self.push_screen(SettingsScreen(self))
+
+    def action_diagnostics(self) -> None:
+        self.push_screen(DiagnosticsScreen(self))
+
+    def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        """Expose workstation actions through Textual's native Ctrl+P palette."""
+        yield from super().get_system_commands(screen)
+        yield SystemCommand("Open Settings", "Review safe local configuration", self.action_settings)
+        yield SystemCommand("Refresh dashboard", "Fetch the latest MMR state", self.action_refresh)
+        yield SystemCommand("Open diagnostics", "Review connection and execution safety state", self.action_diagnostics)
+
     def on_unmount(self) -> None:
         close = getattr(self.backend, "close", None)
         if close:
             close()
 
 
-def run_tui(demo: bool = False, watchlist: list[str] | None = None) -> None:
-    MMRTerminal(demo=demo, watchlist=watchlist).run()
+def run_tui(demo: bool = False, watchlist: list[str] | None = None,
+            open_settings: bool = False) -> None:
+    # `mmr tui` is also the public OpenWallStreet launcher target.  Import
+    # lazily to avoid a module cycle while ensuring it gets the editable,
+    # persisted product Settings center rather than the legacy prototype.
+    from trader.openwallstreet_tui import run_openwallstreet_tui
+
+    run_openwallstreet_tui(demo=demo, watchlist=watchlist, open_settings=open_settings)

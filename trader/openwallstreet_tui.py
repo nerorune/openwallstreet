@@ -146,9 +146,14 @@ class OpenWallStreetTerminal(MMRTerminal):
         demo: bool = False,
         watchlist: list[str] | None = None,
         *,
+        open_settings: bool = False,
         ui_store: UISettingsStore | None = None,
     ) -> None:
-        super().__init__(demo=demo, watchlist=watchlist)
+        # The base terminal still owns dashboard data and SDK/RPC access.  Keep
+        # its legacy settings screen suppressed so every product entry point
+        # uses the OpenWallStreet control center below.
+        super().__init__(demo=demo, watchlist=watchlist, open_settings=False)
+        self._open_settings_on_mount = open_settings
         self.ui_store = ui_store or UISettingsStore()
         explicit = [symbol.strip().upper() for symbol in (watchlist or []) if symbol.strip()]
         persisted = self.ui_store.settings.manual_symbols
@@ -193,13 +198,20 @@ class OpenWallStreetTerminal(MMRTerminal):
         if self.ui_store.load_warning:
             self.state.note(self.ui_store.load_warning)
             self._apply_state(self.state)
+        if self._open_settings_on_mount:
+            self.action_settings()
 
     def action_settings(self) -> None:
         self.push_screen(OpenWallStreetSettingsScreen(self))
 
 
-def run_openwallstreet_tui(demo: bool = False, watchlist: list[str] | None = None) -> None:
-    OpenWallStreetTerminal(demo=demo, watchlist=watchlist).run()
+def run_openwallstreet_tui(
+    demo: bool = False,
+    watchlist: list[str] | None = None,
+    *,
+    open_settings: bool = False,
+) -> None:
+    OpenWallStreetTerminal(demo=demo, watchlist=watchlist, open_settings=open_settings).run()
 
 
 def main() -> None:

@@ -398,6 +398,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help='Run deterministic local demo data; never contacts IBKR')
     tui_p.add_argument('--watchlist', default='',
                        help='Comma-separated symbols (default: built-in paper watchlist)')
+    tui_p.add_argument('--settings', action='store_true',
+                       help='Open the terminal directly in its Settings control center')
 
     # portfolio
     portfolio_p = sub.add_parser('portfolio', aliases=['p'], help='Portfolio with P&L',
@@ -1983,7 +1985,7 @@ def dispatch(mmr: MMR, args: argparse.Namespace) -> bool:
         # calls free of Textual terminal setup.
         from trader.tui import run_tui
         symbols = [s.strip().upper() for s in args.watchlist.split(',') if s.strip()]
-        run_tui(demo=args.demo, watchlist=symbols or None)
+        run_tui(demo=args.demo, watchlist=symbols or None, open_settings=args.settings)
         return True
 
     # MMR_ROLE capability gate (defense-in-depth). This single insertion covers
